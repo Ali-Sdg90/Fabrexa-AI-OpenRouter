@@ -4,7 +4,7 @@ REM Fabrexa AI Bot - Windows startup script
 echo.
 echo ============================================================
 echo   Fabrexa AI - Telegram Bot
-echo   Powered by local Ollama models
+echo   Groq text + local ComfyUI images
 echo ============================================================
 echo.
 
@@ -39,7 +39,9 @@ if not exist ".env" (
     echo    - TELEGRAM_BOT_TOKEN
     echo    - OWNER_ID
     echo    - OWNER_USERNAME
-    echo    - OLLAMA_MODEL
+    echo    - GROQ_API_KEY
+    echo    - GROQ_MODEL
+    echo    - COMFYUI_CHECKPOINT_NAME
     echo.
     pause
     exit /b 1
@@ -58,7 +60,7 @@ if not exist "node_modules" (
 
 echo.
 echo Starting Fabrexa AI Bot...
-echo Make sure Ollama is running: ollama serve
+echo Make sure local ComfyUI is running.
 echo.
 call npm start
 

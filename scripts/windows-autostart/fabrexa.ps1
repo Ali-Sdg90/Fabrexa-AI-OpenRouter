@@ -24,14 +24,6 @@ $ErrLog = Join-Path $StateDir "bot-error.log"
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
 
 $Node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
-$Ollama = (Get-Command ollama.exe -ErrorAction SilentlyContinue).Source
-
-if (-not $Ollama) {
-    $candidate = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
-    if (Test-Path $candidate) {
-        $Ollama = $candidate
-    }
-}
 
 function Show-Notification {
     param(
@@ -141,29 +133,20 @@ function Wait-Telegram {
     }
 }
 
-function Test-Ollama {
+function Test-Groq {
     try {
-        Invoke-RestMethod `
-            -Uri "http://127.0.0.1:11434/api/tags" `
-            -TimeoutSec 2 | Out-Null
+        Invoke-WebRequest `
+            -Uri "https://api.groq.com/openai/v1/models" `
+            -UseBasicParsing `
+            -TimeoutSec 5 | Out-Null
 
         return $true
     }
     catch {
-        return $false
-    }
-}
-
-function Get-LoadedModels {
-    try {
-        $result = Invoke-RestMethod `
-            -Uri "http://127.0.0.1:11434/api/ps" `
-            -TimeoutSec 2
-
-        return @($result.models | ForEach-Object { $_.name })
-    }
-    catch {
-        return @()
+        # An unauthenticated request should return 401; that still proves the
+        # actual Groq API endpoint is reachable from this machine.
+        $statusCode = [int]$_.Exception.Response.StatusCode
+        return $statusCode -eq 401
     }
 }
 
@@ -189,31 +172,6 @@ function Get-BotProcess {
         Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
         return $null
     }
-}
-
-function Ensure-Ollama {
-    if (Test-Ollama) {
-        return
-    }
-
-    if (-not $Ollama) {
-        throw "Ollama was not found."
-    }
-
-    Start-Process `
-        -FilePath $Ollama `
-        -ArgumentList "serve" `
-        -WindowStyle Hidden
-
-    for ($i = 0; $i -lt 30; $i++) {
-        Start-Sleep -Seconds 1
-
-        if (Test-Ollama) {
-            return
-        }
-    }
-
-    throw "Ollama did not become ready."
 }
 
 function Start-Fabrexa {
@@ -244,7 +202,9 @@ function Start-Fabrexa {
         throw "Telegram is not reachable yet. Nekoray may not be connected."
     }
 
-    Ensure-Ollama
+    if (-not (Test-Groq)) {
+        throw "Groq is not reachable yet. Nekoray may not be connected."
+    }
 
     $process = Start-Process `
         -FilePath $Node `
@@ -288,7 +248,7 @@ function Stop-Fabrexa {
 function Show-Status {
     $bot = Get-BotProcess
     $telegram = Test-Telegram
-    $ollamaRunning = Test-Ollama
+    $groqReachable = Test-Groq
 
     Write-Host ""
     Write-Host "Fabrexa status"
@@ -302,21 +262,7 @@ function Show-Status {
     }
 
     Write-Host "Telegram:  $(if ($telegram) { 'REACHABLE' } else { 'NOT REACHABLE' })"
-    Write-Host "Ollama:    $(if ($ollamaRunning) { 'RUNNING' } else { 'STOPPED' })"
-
-    if ($ollamaRunning) {
-        $models = Get-LoadedModels
-
-        if ($models.Count -gt 0) {
-            Write-Host "Model:     LOADED"
-            foreach ($model in $models) {
-                Write-Host "           $model"
-            }
-        }
-        else {
-            Write-Host "Model:     UNLOADED (normal when idle)"
-        }
-    }
+    Write-Host "Groq:      $(if ($groqReachable) { 'REACHABLE' } else { 'NOT REACHABLE' })"
 
     Write-Host ""
     Write-Host "Logs:"

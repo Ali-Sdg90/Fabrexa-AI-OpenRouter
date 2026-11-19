@@ -5,11 +5,6 @@ import {
     COMFYUI_CHECKPOINT_INPUT,
     COMFYUI_CHECKPOINT_NAME,
     COMFYUI_CHECKPOINT_NODE_ID,
-    COMFYUI_CLEANUP_FREE_RATIO,
-    COMFYUI_CLEANUP_MIN_RELEASE_BYTES,
-    COMFYUI_CLEANUP_POLL_INTERVAL_MS,
-    COMFYUI_CLEANUP_STABLE_SAMPLES,
-    COMFYUI_CLEANUP_TIMEOUT_MS,
     COMFYUI_IDLE_TIMEOUT_MS,
     COMFYUI_POLL_INTERVAL_MS,
     COMFYUI_POSITIVE_PROMPT_INPUT,
@@ -52,11 +47,6 @@ const comfyUIService = new ComfyUIService({
     timeoutMs: COMFYUI_TIMEOUT_MS,
     requestTimeoutMs: COMFYUI_REQUEST_TIMEOUT_MS,
     idleTimeoutMs: COMFYUI_IDLE_TIMEOUT_MS,
-    cleanupTimeoutMs: COMFYUI_CLEANUP_TIMEOUT_MS,
-    cleanupPollIntervalMs: COMFYUI_CLEANUP_POLL_INTERVAL_MS,
-    cleanupMinReleaseBytes: COMFYUI_CLEANUP_MIN_RELEASE_BYTES,
-    cleanupFreeRatio: COMFYUI_CLEANUP_FREE_RATIO,
-    cleanupStableSamples: COMFYUI_CLEANUP_STABLE_SAMPLES,
     mappings: Object.freeze({
         positivePromptNodeId: COMFYUI_POSITIVE_PROMPT_NODE_ID,
         positivePromptInput: COMFYUI_POSITIVE_PROMPT_INPUT,
@@ -74,7 +64,6 @@ const sceneDirector = new SceneDirectorService({
     additionalPromptPath: IMAGE_ADDITIONAL_SCENE_PROMPT_PATH,
 });
 export const imagePipeline = new ImagePipeline({
-    aiClient,
     sceneDirector,
     comfyUIService,
     seedGenerator: generateSeed,

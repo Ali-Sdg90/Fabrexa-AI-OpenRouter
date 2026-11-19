@@ -6,7 +6,7 @@ import { isOwner, replyNotOwner } from "../middleware/ownerCheck.js";
 import { quickKeyboard } from "../utils/keyboards.js";
 import {
     IMAGE_GENERATION_AVAILABLE,
-    OLLAMA_MODEL,
+    GROQ_MODEL,
 } from "../../config/index.js";
 
 export function registerCommandHandlers(bot) {
@@ -18,8 +18,10 @@ export function registerCommandHandlers(bot) {
             : "Automatic images are unavailable in this application configuration.";
         const welcomeMessage = `👋 *Welcome to Fabrexa AI!*
 
-🤖 *Local model:* \`${OLLAMA_MODEL}\`
-🏠 *Powered by:* your local Ollama
+🤖 *Online model:* \`${GROQ_MODEL}\`
+🌐 *Powered by:* Groq
+
+🎨 *Images:* your local ComfyUI
 
 Send me any message, question, idea, or late-night thought and I'll answer with your selected personality.
 

@@ -7,7 +7,7 @@ import {
     IMAGE_GENERATION_AVAILABLE,
     COMFYUI_CHECKPOINT_NAME,
     MAX_MESSAGE_LENGTH,
-    OLLAMA_MODEL,
+    GROQ_MODEL,
     TELEGRAM_STREAM_EDIT_INTERVAL_MS,
 } from "../../config/index.js";
 import { PERSONALITIES } from "../../personalities/index.js";
@@ -65,7 +65,7 @@ export function formatModelDisplayName(value, maxWords = 4) {
 export function buildProcessingMessage({
     personalityName,
     imageEnabled,
-    textModel = OLLAMA_MODEL,
+    textModel = GROQ_MODEL,
     imageModel = COMFYUI_CHECKPOINT_NAME,
 }) {
     const textLabel = formatModelDisplayName(textModel);
@@ -90,7 +90,7 @@ async function logPipelineTimings({
     messageTimings,
     imageTimings,
     totalToPhotoMs,
-    totalWithCleanupMs,
+    totalMs,
 }) {
     const report = buildPipelineTimingReport({
         username,
@@ -98,7 +98,7 @@ async function logPipelineTimings({
         messageTimings,
         imageTimings,
         totalToPhotoMs,
-        totalWithCleanupMs,
+        totalMs,
     });
     console.log(report);
     try {
@@ -239,14 +239,6 @@ async function sendAutomaticImage(
         console.error(
             `❌ Automatic image failed for ${username} (${userId}): ${error.message}`,
         );
-        if (error.imageDelivered) {
-            return {
-                timings: error.pipelineTimings,
-                photoDeliveredAt,
-                recoveryFailed: true,
-            };
-        }
-
         const message = imageGenerationErrorMessage(error);
         if (imageStatusMessage?.message_id) {
             const edited = await editMessageSafely(
@@ -277,19 +269,12 @@ async function processConversation({
     const messageTimings = {
         requestSetupMs: queuedAt - receivedAt,
         queueWaitMs: processingStartedAt - queuedAt,
-        textModelPreparationMs: 0,
         contextPreparationMs: 0,
         textGenerationMs: 0,
         textDeliveryMs: 0,
     };
 
     let phaseStartedAt = Date.now();
-    if (imageEnabled || !imagePipeline.textModelReady) {
-        await imagePipeline.ensureTextModelReady();
-    }
-    messageTimings.textModelPreparationMs = Date.now() - phaseStartedAt;
-
-    phaseStartedAt = Date.now();
     const recentHistory = await loadRecentConversation(
         ctx.chat.id,
         undefined,
@@ -340,7 +325,7 @@ async function processConversation({
     if (!response) {
         await deleteMessageSafely(ctx, processingMessage?.message_id);
         await ctx.reply(
-            "❌ I couldn't process your request. Please make sure Ollama is running and try again.",
+            "❌ I couldn't process your request. Please check the Groq connection and try again.",
         );
         return;
     }
@@ -377,7 +362,7 @@ async function processConversation({
                 messageTimings,
                 imageTimings: imageResult.timings,
                 totalToPhotoMs: imageResult.photoDeliveredAt - receivedAt,
-                totalWithCleanupMs: Date.now() - receivedAt,
+                totalMs: Date.now() - receivedAt,
             });
         }
     }
@@ -398,18 +383,14 @@ function scheduleSessionMemoryAnalysis({
 }) {
     try {
         const queued = conversationQueue.add(
-            async () => {
-                if (!imagePipeline.textModelReady) {
-                    await imagePipeline.ensureTextModelReady();
-                }
-                return analyzeAndSaveSessionTurn({
+            async () =>
+                analyzeAndSaveSessionTurn({
                     chatId,
                     sessionId,
                     userMessage,
                     assistantMessage,
                     aiClient,
-                });
-            },
+                }),
             { priority: "background" },
         );
         void queued.promise.catch((error) => {

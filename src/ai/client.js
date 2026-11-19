@@ -1,27 +1,25 @@
 /**
  * AI client for Fabrexa Bot.
- * Handles communication with a local Ollama server.
+ * Handles communication with the hosted Groq API.
  */
 
 import axios from "axios";
 import {
     IS_DEV_LOG_MODE,
-    OLLAMA_BASE_URL,
-    OLLAMA_CHAT_URL,
-    OLLAMA_MODEL,
-    OLLAMA_KEEP_ALIVE,
-    OLLAMA_NUM_CTX,
-    OLLAMA_TEMPERATURE,
-    OLLAMA_TOP_P,
-    OLLAMA_MAX_TOKENS,
-    OLLAMA_MIN_RESPONSE_WORDS,
-    OLLAMA_MAX_CONTINUATIONS,
+    GROQ_API_KEY,
+    GROQ_CHAT_URL,
+    GROQ_MODEL,
+    GROQ_CONTEXT_WINDOW,
+    GROQ_TEMPERATURE,
+    GROQ_TOP_P,
+    GROQ_MAX_TOKENS,
+    GROQ_MIN_RESPONSE_WORDS,
+    GROQ_MAX_CONTINUATIONS,
+    GROQ_REASONING_EFFORT,
     CHAT_HISTORY_MAX_MESSAGES,
     CHAT_HISTORY_MAX_TOKENS,
     SYSTEM_MESSAGE,
     PERSONALITY_INSTRUCTION,
-    OLLAMA_HANDOFF_TIMEOUT_MS,
-    OLLAMA_HANDOFF_POLL_INTERVAL_MS,
     IMAGE_DIRECTOR_TEMPERATURE,
     IMAGE_DIRECTOR_TOP_P,
     IMAGE_DIRECTOR_MAX_TOKENS,
@@ -42,21 +40,20 @@ function logDev(label, value) {
 }
 
 function getResponseChunk(data) {
-    return data?.message?.content || data?.response || "";
+    return (
+        data?.choices?.[0]?.delta?.content ||
+        data?.choices?.[0]?.message?.content ||
+        ""
+    );
 }
 
-function normalizedModelName(value) {
-    return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function modelMatches(candidate, configuredModel) {
-    const candidateName = normalizedModelName(candidate);
-    const expectedName = normalizedModelName(configuredModel);
-    return candidateName === expectedName || candidateName === `${expectedName}:latest`;
-}
-
-function wait(milliseconds) {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function throwStreamError(data) {
+    if (!data?.error) return;
+    const error = new Error(
+        data.error.message || "Groq returned a streaming error.",
+    );
+    error.code = data.error.code;
+    throw error;
 }
 
 export function countResponseWords(value) {
@@ -73,7 +70,7 @@ function appendResponse(current, next) {
 function buildContinuationMessages(baseMessages, response) {
     const remainingWords = Math.max(
         1,
-        OLLAMA_MIN_RESPONSE_WORDS - countResponseWords(response),
+        GROQ_MIN_RESPONSE_WORDS - countResponseWords(response),
     );
 
     return [
@@ -88,9 +85,9 @@ function buildContinuationMessages(baseMessages, response) {
 
 function shouldContinueResponse(response, continuationCount) {
     return (
-        OLLAMA_MIN_RESPONSE_WORDS > 0 &&
-        countResponseWords(response) < OLLAMA_MIN_RESPONSE_WORDS &&
-        continuationCount < OLLAMA_MAX_CONTINUATIONS
+        GROQ_MIN_RESPONSE_WORDS > 0 &&
+        countResponseWords(response) < GROQ_MIN_RESPONSE_WORDS &&
+        continuationCount < GROQ_MAX_CONTINUATIONS
     );
 }
 
@@ -156,15 +153,15 @@ export function selectRecentHistory(
 }
 
 class AIClient {
-    constructor({ httpClient = axios, sleep = wait, now = Date.now } = {}) {
-        this.apiUrl = OLLAMA_CHAT_URL;
-        this.baseUrl = OLLAMA_BASE_URL;
-        this.model = OLLAMA_MODEL;
+    constructor({ httpClient = axios } = {}) {
+        this.apiUrl = GROQ_CHAT_URL;
+        this.model = GROQ_MODEL;
         this.systemMessage = SYSTEM_MESSAGE;
         this.httpClient = httpClient;
-        this.sleep = sleep;
-        this.now = now;
-        this.modelMayBeLoaded = false;
+        this.requestHeaders = Object.freeze({
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            "Content-Type": "application/json",
+        });
     }
 
     buildMessages(
@@ -195,13 +192,13 @@ ${sessionMemoryContext}`
         const fixedTokenEstimate =
             estimateMessageTokens({ content: systemContent }) +
             estimateMessageTokens({ content: userMessage }) +
-            OLLAMA_MAX_TOKENS +
+            GROQ_MAX_TOKENS +
             CONTEXT_SAFETY_TOKENS;
         const availableHistoryTokens = Math.max(
             0,
             Math.min(
                 CHAT_HISTORY_MAX_TOKENS,
-                OLLAMA_NUM_CTX - fixedTokenEstimate,
+                GROQ_CONTEXT_WINDOW - fixedTokenEstimate,
             ),
         );
         const recentHistory = selectRecentHistory(
@@ -242,13 +239,10 @@ ${sessionMemoryContext}`
                 sessionMemoryContext,
             ),
             stream,
-            keep_alive: OLLAMA_KEEP_ALIVE,
-            options: {
-                temperature: OLLAMA_TEMPERATURE,
-                top_p: OLLAMA_TOP_P,
-                num_ctx: OLLAMA_NUM_CTX,
-                num_predict: OLLAMA_MAX_TOKENS,
-            },
+            temperature: GROQ_TEMPERATURE,
+            top_p: GROQ_TOP_P,
+            max_tokens: GROQ_MAX_TOKENS,
+            reasoning_effort: GROQ_REASONING_EFFORT,
         };
     }
 
@@ -279,18 +273,20 @@ ${sessionMemoryContext}`
                     ...payload,
                     messages: requestMessages,
                 };
-                logDev("Ollama chat request", {
+                logDev("Groq chat request", {
                     url: this.apiUrl,
                     timeout: REQUEST_TIMEOUT,
                     continuationCount,
                     payload: requestPayload,
                 });
 
-                this.modelMayBeLoaded = true;
                 const response = await this.httpClient.post(
                     this.apiUrl,
                     requestPayload,
-                    { timeout: REQUEST_TIMEOUT },
+                    {
+                        timeout: REQUEST_TIMEOUT,
+                        headers: this.requestHeaders,
+                    },
                 );
                 const responseChunk = getResponseChunk(response.data);
                 finalData = response.data;
@@ -310,27 +306,23 @@ ${sessionMemoryContext}`
             }
 
             if (!messageContent.trim()) {
-                console.warn("⚠️ Ollama returned an empty response.");
+                console.warn("⚠️ Groq returned an empty response.");
                 return null;
             }
 
             console.log(
-                `✅ Ollama response received from ${this.model} (${messageContent.length} chars, ${Date.now() - startedAt}ms)`,
+                `✅ Groq response received from ${finalData?.model || this.model} (${messageContent.length} chars, ${Date.now() - startedAt}ms)`,
             );
-            logDev("Ollama chat response", {
+            logDev("Groq chat response", {
                 model: finalData?.model,
-                done: finalData?.done,
+                finishReason: finalData?.choices?.[0]?.finish_reason,
                 continuationCount,
                 responseWords: countResponseWords(messageContent),
-                totalDuration: finalData?.total_duration,
-                loadDuration: finalData?.load_duration,
-                promptEvalCount: finalData?.prompt_eval_count,
-                evalCount: finalData?.eval_count,
-                evalDuration: finalData?.eval_duration,
+                usage: finalData?.usage,
             });
             return messageContent;
         } catch (error) {
-            this.logOllamaError(error);
+            this.logGroqError(error);
             return null;
         }
     }
@@ -362,17 +354,17 @@ ${sessionMemoryContext}`
                     ...payload,
                     messages: requestMessages,
                 };
-                logDev("Ollama streaming chat request", {
+                logDev("Groq streaming chat request", {
                     url: this.apiUrl,
                     timeout: REQUEST_TIMEOUT,
                     continuationCount,
                     payload: requestPayload,
                 });
 
-                this.modelMayBeLoaded = true;
                 const response = await this.httpClient.post(this.apiUrl, requestPayload, {
                     timeout: REQUEST_TIMEOUT,
                     responseType: "stream",
+                    headers: this.requestHeaders,
                 });
 
                 let buffer = "";
@@ -398,21 +390,27 @@ ${sessionMemoryContext}`
                     buffer = lines.pop() || "";
 
                     for (const line of lines) {
-                        if (!line.trim()) continue;
-                        const data = JSON.parse(line);
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith("data:")) continue;
+                        const payloadText = trimmed.slice(5).trim();
+                        if (!payloadText || payloadText === "[DONE]") continue;
+                        const data = JSON.parse(payloadText);
+                        throwStreamError(data);
                         await appendChunk(getResponseChunk(data), data);
-
-                        if (data.done) {
-                            finalMetadata = data;
-                        }
+                        finalMetadata = data;
                     }
                 }
 
                 if (buffer.trim()) {
-                    const data = JSON.parse(buffer);
-                    await appendChunk(getResponseChunk(data), data);
-                    if (data.done) {
-                        finalMetadata = data;
+                    const trimmed = buffer.trim();
+                    if (trimmed.startsWith("data:")) {
+                        const payloadText = trimmed.slice(5).trim();
+                        if (payloadText && payloadText !== "[DONE]") {
+                            const data = JSON.parse(payloadText);
+                            throwStreamError(data);
+                            await appendChunk(getResponseChunk(data), data);
+                            finalMetadata = data;
+                        }
                     }
                 }
 
@@ -429,29 +427,25 @@ ${sessionMemoryContext}`
             }
 
             if (!fullContent.trim()) {
-                console.warn("⚠️ Ollama stream finished with an empty response.");
+                console.warn("⚠️ Groq stream finished with an empty response.");
                 return null;
             }
 
             console.log(
-                `✅ Ollama stream complete from ${this.model} (${fullContent.length} chars, ${Date.now() - startedAt}ms)`,
+                `✅ Groq stream complete from ${finalMetadata?.model || this.model} (${fullContent.length} chars, ${Date.now() - startedAt}ms)`,
             );
-            logDev("Ollama streaming chat response", {
+            logDev("Groq streaming chat response", {
                 elapsedMs: Date.now() - startedAt,
                 model: finalMetadata?.model,
-                done: finalMetadata?.done,
+                finishReason: finalMetadata?.choices?.[0]?.finish_reason,
                 continuationCount,
                 responseWords: countResponseWords(fullContent),
-                totalDuration: finalMetadata?.total_duration,
-                loadDuration: finalMetadata?.load_duration,
-                promptEvalCount: finalMetadata?.prompt_eval_count,
-                evalCount: finalMetadata?.eval_count,
-                evalDuration: finalMetadata?.eval_duration,
+                usage: finalMetadata?.usage,
             });
 
             return fullContent;
         } catch (error) {
-            this.logOllamaError(error);
+            this.logGroqError(error);
             return fullContent.trim() ? fullContent : null;
         }
     }
@@ -503,28 +497,25 @@ ${sessionMemory || "No prior session continuity memory was recorded."}
                 },
             ],
             stream: false,
-            keep_alive: OLLAMA_KEEP_ALIVE,
-            options: {
-                temperature: IMAGE_DIRECTOR_TEMPERATURE,
-                top_p: IMAGE_DIRECTOR_TOP_P,
-                num_ctx: OLLAMA_NUM_CTX,
-                num_predict: IMAGE_DIRECTOR_MAX_TOKENS,
-            },
+            temperature: IMAGE_DIRECTOR_TEMPERATURE,
+            top_p: IMAGE_DIRECTOR_TOP_P,
+            max_tokens: IMAGE_DIRECTOR_MAX_TOKENS,
+            reasoning_effort: GROQ_REASONING_EFFORT,
         };
 
-        logDev("Ollama scene-director request", {
+        logDev("Groq scene-director request", {
             url: this.apiUrl,
             timeout: REQUEST_TIMEOUT,
             payload,
         });
 
-        this.modelMayBeLoaded = true;
         const response = await this.httpClient.post(this.apiUrl, payload, {
             timeout: REQUEST_TIMEOUT,
+            headers: this.requestHeaders,
         });
         const content = getResponseChunk(response.data);
         if (!content.trim()) {
-            throw new Error("Ollama returned an empty scene prompt.");
+            throw new Error("Groq returned an empty scene prompt.");
         }
         return content;
     }
@@ -553,108 +544,36 @@ ${sessionMemory || "No prior session continuity memory was recorded."}
                 },
             ],
             stream: false,
-            format: "json",
-            keep_alive: OLLAMA_KEEP_ALIVE,
-            options: {
-                temperature: 0.1,
-                top_p: 0.9,
-                num_ctx: OLLAMA_NUM_CTX,
-                num_predict: 512,
-            },
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            top_p: 0.9,
+            max_tokens: 512,
+            reasoning_effort: GROQ_REASONING_EFFORT,
         };
 
-        logDev("Ollama session-memory request", {
+        logDev("Groq session-memory request", {
             url: this.apiUrl,
             timeout: 0,
             payload,
         });
 
-        this.modelMayBeLoaded = true;
         const response = await this.httpClient.post(this.apiUrl, payload, {
             timeout: 0,
+            headers: this.requestHeaders,
         });
         const content = getResponseChunk(response.data);
         if (!content.trim()) {
-            throw new Error("Ollama returned an empty session-memory analysis.");
+            throw new Error("Groq returned an empty session-memory analysis.");
         }
-        logDev("Ollama session-memory response", {
+        logDev("Groq session-memory response", {
             model: response.data?.model,
             content,
         });
         return content;
     }
 
-    async getRunningModels() {
-        const response = await this.httpClient.get(`${this.baseUrl}/api/ps`, {
-            timeout: REQUEST_TIMEOUT,
-        });
-        return Array.isArray(response?.data?.models) ? response.data.models : [];
-    }
-
-    async waitForModelState(shouldBeLoaded) {
-        const startedAt = this.now();
-        while (this.now() - startedAt < OLLAMA_HANDOFF_TIMEOUT_MS) {
-            const runningModels = await this.getRunningModels();
-            const loaded = runningModels.some(
-                (entry) =>
-                    modelMatches(entry?.name, this.model) ||
-                    modelMatches(entry?.model, this.model),
-            );
-            if (loaded === shouldBeLoaded) {
-                return { durationMs: this.now() - startedAt };
-            }
-            await this.sleep(OLLAMA_HANDOFF_POLL_INTERVAL_MS);
-        }
-
-        throw new Error(
-            `Ollama model ${shouldBeLoaded ? "did not load" : "did not unload"} within ${OLLAMA_HANDOFF_TIMEOUT_MS}ms.`,
-        );
-    }
-
-    async unloadModelAndWait() {
-        const runningModels = await this.getRunningModels();
-        const loaded = runningModels.some(
-            (entry) =>
-                modelMatches(entry?.name, this.model) ||
-                modelMatches(entry?.model, this.model),
-        );
-        if (!this.modelMayBeLoaded && !loaded) {
-            return { alreadyUnloaded: true, durationMs: 0 };
-        }
-
-        await this.httpClient.post(
-            `${this.baseUrl}/api/generate`,
-            {
-                model: this.model,
-                prompt: "",
-                stream: false,
-                keep_alive: 0,
-            },
-            { timeout: OLLAMA_HANDOFF_TIMEOUT_MS },
-        );
-        const result = await this.waitForModelState(false);
-        this.modelMayBeLoaded = false;
-        return result;
-    }
-
-    async loadModelAndWait() {
-        await this.httpClient.post(
-            `${this.baseUrl}/api/generate`,
-            {
-                model: this.model,
-                prompt: "",
-                stream: false,
-                keep_alive: OLLAMA_KEEP_ALIVE,
-            },
-            { timeout: REQUEST_TIMEOUT },
-        );
-        const result = await this.waitForModelState(true);
-        this.modelMayBeLoaded = true;
-        return result;
-    }
-
-    logOllamaError(error) {
-        console.error("\n❌ Error calling local Ollama:");
+    logGroqError(error) {
+        console.error("\n❌ Error calling Groq:");
         console.error(`   🧩 Type: ${error.name}`);
         console.error(`   🔢 Code: ${error.code || "n/a"}`);
         console.error(`   💬 Message: ${error.message}`);
@@ -668,11 +587,11 @@ ${sessionMemory || "No prior session continuity memory was recorded."}
             console.error(`   📦 Body: ${JSON.stringify(error.response.data)}`);
         }
 
-        console.log("\n💡 Ollama checks:");
-        console.log("   1. Start Ollama: ollama serve");
-        console.log(`   2. Pull the model: ollama pull ${this.model}`);
-        console.log(`   3. Verify OLLAMA_BASE_URL: ${this.apiUrl}`);
-        console.log("   4. Verify OLLAMA_MODEL in .env\n");
+        console.log("\n💡 Groq checks:");
+        console.log("   1. Verify GROQ_API_KEY in .env");
+        console.log(`   2. Verify GROQ_MODEL: ${this.model}`);
+        console.log(`   3. Verify GROQ_BASE_URL: ${this.apiUrl}`);
+        console.log("   4. Check internet access and Groq rate limits\n");
     }
 
     setSystemMessage(message) {

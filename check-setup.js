@@ -35,13 +35,6 @@ const npmVersion =
     (process.env.npm_execpath ? "available through npm" : null);
 addCheck("npm", Boolean(npmVersion), npmVersion || "npm not found");
 
-const ollamaVersion = commandVersion("ollama");
-addCheck(
-    "Ollama CLI",
-    Boolean(ollamaVersion),
-    ollamaVersion || "ollama command not found; install Ollama if needed",
-);
-
 addCheck(
     "TELEGRAM_BOT_TOKEN",
     Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim()),
@@ -76,12 +69,26 @@ addCheck(
 );
 addCheck("Bot access", true, botPrivate ? "private" : "public");
 
+const groqApiKey = process.env.GROQ_API_KEY?.trim();
+addCheck(
+    "GROQ_API_KEY",
+    Boolean(groqApiKey),
+    groqApiKey ? "set" : "missing",
+);
+
 const model =
-    process.env.OLLAMA_MODEL?.trim() ||
+    process.env.GROQ_MODEL?.trim() ||
     process.env.AI_MODEL?.trim() ||
     process.env.MODEL?.trim() ||
-    "llama3.1";
-addCheck("Ollama model", Boolean(model), model);
+    "qwen/qwen3.8-27b";
+addCheck("Groq model", Boolean(model), model);
+
+const reasoningEffort = (process.env.GROQ_REASONING_EFFORT || "none").trim();
+addCheck(
+    "Groq reasoning effort",
+    ["none", "default", "low", "medium", "high"].includes(reasoningEffort),
+    reasoningEffort || "invalid",
+);
 
 const logMode = (process.env.LOG_MODE || "normal").trim();
 addCheck("Log mode", Boolean(logMode), logMode);
@@ -178,10 +185,10 @@ const sessionMemoryMaxPromptTokens = Number(
     process.env.SESSION_MEMORY_MAX_PROMPT_TOKENS || 2048,
 );
 const minResponseWords = Number(
-    process.env.OLLAMA_MIN_RESPONSE_WORDS ?? 250,
+    process.env.GROQ_MIN_RESPONSE_WORDS ?? 250,
 );
 const maxContinuations = Number(
-    process.env.OLLAMA_MAX_CONTINUATIONS ?? 2,
+    process.env.GROQ_MAX_CONTINUATIONS ?? 2,
 );
 addCheck(
     "Minimum response length",
@@ -217,37 +224,44 @@ addCheck(
     `${sessionMemoryMaxPromptTokens || "invalid"} approximate tokens`,
 );
 
-const ollamaBaseUrl = (process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434").replace(
+const groqBaseUrl = (process.env.GROQ_BASE_URL?.trim() || "https://api.groq.com/openai/v1").replace(
     /\/+$/,
     "",
 );
 
-try {
-    const response = await fetch(`${ollamaBaseUrl}/api/tags`, {
-        signal: AbortSignal.timeout(3000),
-    });
-    const data = await response.json();
-    const installedModels = Array.isArray(data.models)
-        ? data.models.map((entry) => entry.name)
-        : [];
-    const modelInstalled =
-        installedModels.includes(model) ||
-        (!model.includes(":") && installedModels.includes(`${model}:latest`));
-
-    addCheck("Ollama server", response.ok, ollamaBaseUrl);
-    addCheck(
-        "Configured model installed",
-        modelInstalled,
-        modelInstalled
-            ? model
-            : `missing ${model}; installed: ${installedModels.join(", ") || "none"}`,
-    );
-} catch (error) {
-    addCheck(
-        "Ollama server",
-        false,
-        `${ollamaBaseUrl} is not reachable (${error.message})`,
-    );
+if (groqApiKey) {
+    try {
+        const response = await fetch(`${groqBaseUrl}/models`, {
+            headers: { Authorization: `Bearer ${groqApiKey}` },
+            signal: AbortSignal.timeout(5000),
+        });
+        const data = await response.json().catch(() => null);
+        const availableModels = Array.isArray(data?.data)
+            ? data.data.map((entry) => entry?.id).filter(Boolean)
+            : [];
+        addCheck(
+            "Groq API",
+            response.ok,
+            response.ok
+                ? `${groqBaseUrl} accepted the configured key`
+                : `${groqBaseUrl} returned HTTP ${response.status}`,
+        );
+        addCheck(
+            "Configured Groq model",
+            response.ok && availableModels.includes(model),
+            availableModels.includes(model)
+                ? model
+                : `${model} is not available for this key`,
+        );
+    } catch (error) {
+        addCheck(
+            "Groq API",
+            false,
+            `${groqBaseUrl} is not reachable (${error.message})`,
+        );
+    }
+} else {
+    addCheck("Groq API", false, "not checked because the API key is missing");
 }
 
 if (imageGenerationAvailable) {
@@ -287,4 +301,4 @@ if (failed.length) {
     process.exit(1);
 }
 
-console.log("\nSetup looks ready. Make sure Ollama is running before npm start.");
+console.log("\nSetup looks ready. Keep local ComfyUI running before npm start.");

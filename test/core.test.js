@@ -7,10 +7,14 @@ process.env.TELEGRAM_BOT_TOKEN = "test-token";
 process.env.OWNER_ID = "1001";
 process.env.OWNER_USERNAME = "fabrexa_owner";
 process.env.BOT_PRIVATE = "true";
-process.env.OLLAMA_NUM_CTX = "8192";
-process.env.OLLAMA_MAX_TOKENS = "512";
-process.env.OLLAMA_MIN_RESPONSE_WORDS = "250";
-process.env.OLLAMA_MAX_CONTINUATIONS = "2";
+process.env.LOG_MODE = "normal";
+process.env.GROQ_API_KEY = "test-groq-key";
+process.env.GROQ_MODEL = "qwen/qwen3.8-27b";
+process.env.GROQ_CONTEXT_WINDOW = "8192";
+process.env.GROQ_MAX_TOKENS = "512";
+process.env.GROQ_MIN_RESPONSE_WORDS = "250";
+process.env.GROQ_MAX_CONTINUATIONS = "2";
+process.env.GROQ_REASONING_EFFORT = "none";
 process.env.CHAT_HISTORY_MAX_MESSAGES = "24";
 process.env.CHAT_HISTORY_MAX_TOKENS = "4096";
 process.env.PERSONALITY_INSTRUCTION =
@@ -209,7 +213,7 @@ test("session history limits parsed messages instead of physical lines", () => {
     ]);
 });
 
-test("the Ollama prompt keeps up to 24 previous messages", () => {
+test("the Groq prompt keeps up to 24 previous messages", () => {
     const client = new AIClient();
     const history = Array.from({ length: 30 }, (_, index) => ({
         role: index % 2 === 0 ? "user" : "assistant",
@@ -248,6 +252,77 @@ test("the shared response instruction follows the personality prompt", () => {
 test("response word counting supports multiline text", () => {
     assert.equal(countResponseWords("one  two\nthree\n\nfour"), 4);
     assert.equal(countResponseWords("   "), 0);
+});
+
+test("Groq chat uses bearer auth and OpenAI-compatible payload fields", async () => {
+    let request;
+    const client = new AIClient({
+        httpClient: {
+            async post(url, payload, options) {
+                request = { url, payload, options };
+                return {
+                    data: {
+                        model: "qwen/qwen3.8-27b",
+                        choices: [
+                            {
+                                message: {
+                                    content: "word ".repeat(250).trim(),
+                                },
+                                finish_reason: "stop",
+                            },
+                        ],
+                    },
+                };
+            },
+        },
+    });
+
+    const result = await client.chat("hello");
+
+    assert.ok(result.startsWith("word word"));
+    assert.match(request.url, /api\.groq\.com\/openai\/v1\/chat\/completions$/);
+    assert.equal(request.options.headers.Authorization, "Bearer test-groq-key");
+    assert.equal(request.payload.model, "qwen/qwen3.8-27b");
+    assert.equal(request.payload.max_tokens, 512);
+    assert.equal(request.payload.reasoning_effort, "none");
+    assert.equal(request.payload.keep_alive, undefined);
+    assert.equal(request.payload.options, undefined);
+});
+
+test("Groq SSE streaming emits incremental text", async () => {
+    const responseText = "word ".repeat(250).trim();
+    const progress = [];
+    const client = new AIClient({
+        httpClient: {
+            async post() {
+                return {
+                    data: (async function* () {
+                        yield Buffer.from(
+                            `data: ${JSON.stringify({
+                                model: "qwen/qwen3.8-27b",
+                                choices: [
+                                    {
+                                        delta: { content: responseText },
+                                        finish_reason: "stop",
+                                    },
+                                ],
+                            })}\n\ndata: [DONE]\n\n`,
+                        );
+                    })(),
+                };
+            },
+        },
+    });
+
+    const result = await client.chatStream(
+        "hello",
+        null,
+        [],
+        async (partial) => progress.push(partial),
+    );
+
+    assert.equal(result, responseText);
+    assert.deepEqual(progress, [responseText]);
 });
 
 test("history trimming keeps the newest complete exchange within its token budget", () => {
@@ -412,7 +487,9 @@ test("the session-memory analyzer receives only the latest exchange and its prom
                 request = { url, payload, options };
                 return {
                     data: {
-                        message: { content: '{"entries":[]}' },
+                        choices: [
+                            { message: { content: '{"entries":[]}' } },
+                        ],
                     },
                 };
             },
@@ -426,8 +503,9 @@ test("the session-memory analyzer receives only the latest exchange and its prom
     );
 
     assert.equal(result, '{"entries":[]}');
-    assert.equal(request.payload.format, "json");
+    assert.deepEqual(request.payload.response_format, { type: "json_object" });
     assert.equal(request.options.timeout, 0);
+    assert.equal(request.options.headers.Authorization, "Bearer test-groq-key");
     assert.deepEqual(request.payload.messages, [
         { role: "system", content: "strict analyzer prompt" },
         {

@@ -192,7 +192,7 @@ export class ComfyUIService {
         const startedAt = this.now();
         while (this.now() - startedAt < this.config.idleTimeoutMs) {
             if ((await this.getQueueState()).idle) return;
-            await this.sleep(this.config.cleanupPollIntervalMs);
+            await this.sleep(this.config.pollIntervalMs);
         }
         throw new ComfyUIError("ComfyUI did not become idle in time.");
     }
@@ -276,91 +276,6 @@ export class ComfyUIService {
         throw new ComfyUIError("ComfyUI image generation timed out.");
     }
 
-    async releaseModelsForTextInference() {
-        await this.waitUntilIdle();
-        const before = await this.#getVramSnapshot();
-        try {
-            await this.httpClient.post("/free", {
-                unload_models: true,
-                free_memory: true,
-            });
-        } catch (error) {
-            throw new ComfyUIError("Could not unload the ComfyUI models.", {
-                cause: error,
-            });
-        }
-
-        const startedAt = this.now();
-        let previousFreeBytes = null;
-        let stableSamples = 0;
-        while (this.now() - startedAt < this.config.cleanupTimeoutMs) {
-            if (!(await this.getQueueState()).idle) {
-                throw new ComfyUIError(
-                    "ComfyUI started another job during model cleanup.",
-                );
-            }
-            const current = await this.#getVramSnapshot();
-            if (
-                previousFreeBytes !== null &&
-                Math.abs(current.freeBytes - previousFreeBytes) <= 32 * 1024 * 1024
-            ) {
-                stableSamples += 1;
-            } else {
-                stableSamples = 1;
-            }
-            previousFreeBytes = current.freeBytes;
-
-            const alreadyMostlyFree =
-                before.freeBytes / before.totalBytes >= this.config.cleanupFreeRatio;
-            const nowMostlyFree =
-                current.freeBytes / current.totalBytes >= this.config.cleanupFreeRatio;
-            const releasedEnough =
-                current.freeBytes - before.freeBytes >=
-                this.config.cleanupMinReleaseBytes;
-            if (
-                nowMostlyFree &&
-                (alreadyMostlyFree || releasedEnough) &&
-                stableSamples >= this.config.cleanupStableSamples
-            ) {
-                return;
-            }
-            await this.sleep(this.config.cleanupPollIntervalMs);
-        }
-        throw new ComfyUIError(
-            "ComfyUI model cleanup could not be verified in time.",
-        );
-    }
-
-    async #getVramSnapshot() {
-        let response;
-        try {
-            response = await this.httpClient.get("/system_stats");
-        } catch (error) {
-            throw new ComfyUIError("Could not inspect ComfyUI VRAM usage.", {
-                cause: error,
-            });
-        }
-        const devices = Array.isArray(response?.data?.devices)
-            ? response.data.devices
-            : [];
-        const device =
-            devices.find((entry) =>
-                String(entry?.type || "")
-                    .toLowerCase()
-                    .includes("cuda"),
-            ) || devices[0];
-        if (
-            !Number.isFinite(device?.vram_total) ||
-            !Number.isFinite(device?.vram_free) ||
-            device.vram_total <= 0
-        ) {
-            throw new ComfyUIError("ComfyUI returned invalid VRAM statistics.");
-        }
-        return {
-            totalBytes: device.vram_total,
-            freeBytes: device.vram_free,
-        };
-    }
 }
 
 export function generateSeed() {

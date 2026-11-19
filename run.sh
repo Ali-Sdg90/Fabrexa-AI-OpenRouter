@@ -4,7 +4,7 @@
 echo ""
 echo "============================================================"
 echo "  Fabrexa AI - Telegram Bot"
-echo "  Powered by local Ollama models"
+echo "  Groq text + local ComfyUI images"
 echo "============================================================"
 echo ""
 
@@ -33,7 +33,9 @@ if [ ! -f ".env" ]; then
     echo "   - TELEGRAM_BOT_TOKEN"
     echo "   - OWNER_ID"
     echo "   - OWNER_USERNAME"
-    echo "   - OLLAMA_MODEL"
+    echo "   - GROQ_API_KEY"
+    echo "   - GROQ_MODEL"
+    echo "   - COMFYUI_CHECKPOINT_NAME"
     echo ""
     exit 1
 fi
@@ -50,6 +52,6 @@ fi
 
 echo ""
 echo "Starting Fabrexa AI Bot..."
-echo "Make sure Ollama is running: ollama serve"
+echo "Make sure local ComfyUI is running."
 echo ""
 npm start

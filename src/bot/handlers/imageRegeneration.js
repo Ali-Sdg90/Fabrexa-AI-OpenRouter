@@ -136,23 +136,6 @@ async function regenerateStoredImage(
         console.error(
             `❌ Image regeneration failed for ${username} (${userId}): ${error.message}`,
         );
-        if (error.imageDelivered) {
-            if (error.pipelineTimings) {
-                await logRegenerationTimings({
-                    chatId: ctx.chat.id,
-                    username,
-                    userId,
-                    queueWaitMs: startedAt - queuedAt,
-                    photoDeliveredMs: photoDeliveredAt
-                        ? photoDeliveredAt - startedAt
-                        : 0,
-                    totalMs: Date.now() - startedAt,
-                    timings: error.pipelineTimings,
-                    artifactWriter,
-                });
-            }
-            return;
-        }
         await showRegenerationError(ctx, statusMessage);
     }
 }

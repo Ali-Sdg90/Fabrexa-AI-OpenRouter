@@ -8,27 +8,23 @@ export function buildPipelineTimingReport({
     messageTimings,
     imageTimings,
     totalToPhotoMs,
-    totalWithCleanupMs,
+    totalMs,
 }) {
     return [
         `⏱️ Pipeline timing for ${username} (${userId})`,
         `   Request setup: ${formatSeconds(messageTimings.requestSetupMs)}`,
         `   Queue wait: ${formatSeconds(messageTimings.queueWaitMs)}`,
-        `   Text-model preparation: ${formatSeconds(messageTimings.textModelPreparationMs)}`,
         `   Context and memory: ${formatSeconds(messageTimings.contextPreparationMs)}`,
         `   Text generation: ${formatSeconds(messageTimings.textGenerationMs)}`,
         `   Text delivery: ${formatSeconds(messageTimings.textDeliveryMs)}`,
         `   Scene direction: ${formatSeconds(imageTimings.sceneDirectionMs)}`,
         `   Prompt persistence: ${formatSeconds(imageTimings.promptPersistenceMs)}`,
-        `   Text-model unload: ${formatSeconds(imageTimings.textModelUnloadMs)}`,
         `   Image status: ${formatSeconds(imageTimings.imageStatusMs)}`,
         `   Image generation: ${formatSeconds(imageTimings.imageGenerationMs)}`,
         `   Image delivery: ${formatSeconds(imageTimings.imageDeliveryMs)}`,
-        `   Image-model unload: ${formatSeconds(imageTimings.imageModelUnloadMs)}`,
-        `   Text-model reload: ${formatSeconds(imageTimings.textModelReloadMs)}`,
         `   Image pipeline total: ${formatSeconds(imageTimings.totalMs)}`,
         `   Total until photo: ${formatSeconds(totalToPhotoMs)}`,
-        `   Total with cleanup: ${formatSeconds(totalWithCleanupMs)}`,
+        `   Total: ${formatSeconds(totalMs)}`,
     ].join("\n");
 }
 
@@ -43,14 +39,11 @@ export function buildRegenerationTimingReport({
     return [
         `⏱️ Image regeneration timing for ${username} (${userId})`,
         `   Queue wait: ${formatSeconds(queueWaitMs)}`,
-        `   Text-model unload: ${formatSeconds(timings.textModelUnloadMs)}`,
         `   Image status: ${formatSeconds(timings.imageStatusMs)}`,
         `   Image generation: ${formatSeconds(timings.imageGenerationMs)}`,
         `   Image delivery: ${formatSeconds(timings.imageDeliveryMs)}`,
-        `   Image-model unload: ${formatSeconds(timings.imageModelUnloadMs)}`,
-        `   Text-model reload: ${formatSeconds(timings.textModelReloadMs)}`,
         `   Total until photo: ${formatSeconds(photoDeliveredMs)}`,
-        `   Total with cleanup: ${formatSeconds(totalMs)}`,
+        `   Total: ${formatSeconds(totalMs)}`,
     ].join("\n");
 }
 

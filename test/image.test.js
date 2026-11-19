@@ -9,9 +9,12 @@ process.env.OWNER_ID = "1001";
 process.env.OWNER_USERNAME = "fabrexa_owner";
 process.env.BOT_PRIVATE = "true";
 process.env.LOG_MODE = "normal";
+process.env.GROQ_API_KEY = "test-groq-key";
+process.env.GROQ_MODEL = "qwen/qwen3.8-27b";
+process.env.GROQ_REASONING_EFFORT = "none";
 
 const { default: AIClient } = await import("../src/ai/client.js");
-const { OLLAMA_ANALYZER_MODEL, OLLAMA_MODEL } = await import(
+const { GROQ_ANALYZER_MODEL, GROQ_MODEL } = await import(
     "../src/config/index.js"
 );
 const {
@@ -38,9 +41,15 @@ test("scene direction separates ordered session memory, appearance, and latest m
     let request;
     const client = new AIClient({
         httpClient: {
-            async post(url, payload) {
-                request = { url, payload };
-                return { data: { message: { content: "directed scene" } } };
+            async post(url, payload, options) {
+                request = { url, payload, options };
+                return {
+                    data: {
+                        choices: [
+                            { message: { content: "directed scene" } },
+                        ],
+                    },
+                };
             },
         },
     });
@@ -55,6 +64,13 @@ test("scene direction separates ordered session memory, appearance, and latest m
 
     assert.equal(result, "directed scene");
     assert.equal(request.payload.model, client.model);
+    assert.equal(
+        request.options.headers.Authorization,
+        "Bearer test-groq-key",
+    );
+    assert.equal(request.payload.keep_alive, undefined);
+    assert.equal(request.payload.options, undefined);
+    assert.equal(request.payload.reasoning_effort, "none");
     assert.deepEqual(
         request.payload.messages.map((message) => message.role),
         ["system", "user"],
@@ -169,31 +185,7 @@ test("scene director appends optional private instructions only when available",
 });
 
 test("chat, session-memory analysis, and scene direction share one text model", () => {
-    assert.equal(OLLAMA_ANALYZER_MODEL, OLLAMA_MODEL);
-});
-
-test("Ollama handoff actively unloads and reloads the configured text model", async () => {
-    const posts = [];
-    let runningModels = [{ name: OLLAMA_MODEL }];
-    const client = new AIClient({
-        httpClient: {
-            async get() {
-                return { data: { models: runningModels } };
-            },
-            async post(url, payload) {
-                posts.push({ url, payload });
-                runningModels = payload.keep_alive === 0 ? [] : [{ name: OLLAMA_MODEL }];
-                return { data: {} };
-            },
-        },
-    });
-
-    await client.unloadModelAndWait();
-    await client.loadModelAndWait();
-
-    assert.equal(posts[0].payload.keep_alive, 0);
-    assert.equal(posts[1].payload.model, OLLAMA_MODEL);
-    assert.notEqual(posts[1].payload.keep_alive, 0);
+    assert.equal(GROQ_ANALYZER_MODEL, GROQ_MODEL);
 });
 
 test("scene prompt normalization produces one unrestricted paragraph", () => {
@@ -320,17 +312,9 @@ test("per-account image preference defaults on and persists scene direction", as
     }
 });
 
-test("image pipeline preserves the required model handoff order", async () => {
+test("image pipeline keeps ComfyUI loaded without model handoffs", async () => {
     const events = [];
     const pipeline = new ImagePipeline({
-        aiClient: {
-            async unloadModelAndWait() {
-                events.push("unload-text");
-            },
-            async loadModelAndWait() {
-                events.push("load-text");
-            },
-        },
         sceneDirector: {
             async createFromAppearanceAndLatestMessages(
                 assistantMessage,
@@ -348,9 +332,6 @@ test("image pipeline preserves the required model handoff order", async () => {
             async generate(prompt, seed) {
                 events.push(`generate:${prompt}:${seed}`);
                 return { buffer: Buffer.from("image") };
-            },
-            async releaseModelsForTextInference() {
-                events.push("unload-image");
             },
         },
         seedGenerator: () => 42,
@@ -375,29 +356,18 @@ test("image pipeline preserves the required model handoff order", async () => {
     assert.deepEqual(events, [
         "direct:latest only:user request:silver hair:ordered session state",
         "persist:directed prompt",
-        "unload-text",
         "status",
         "generate:directed prompt:42",
         "deliver",
-        "unload-image",
-        "load-text",
     ]);
     for (const value of Object.values(result.timings)) {
         assert.ok(Number.isFinite(value) && value >= 0);
     }
 });
 
-test("image pipeline restores the text model after image generation fails", async () => {
+test("image pipeline surfaces local ComfyUI generation failures directly", async () => {
     const events = [];
     const pipeline = new ImagePipeline({
-        aiClient: {
-            async unloadModelAndWait() {
-                events.push("unload-text");
-            },
-            async loadModelAndWait() {
-                events.push("load-text");
-            },
-        },
         sceneDirector: {
             async createFromAppearanceAndLatestMessages() {
                 return "directed prompt";
@@ -407,9 +377,6 @@ test("image pipeline restores the text model after image generation fails", asyn
             async generate() {
                 events.push("generate-failed");
                 throw new Error("generation failed");
-            },
-            async releaseModelsForTextInference() {
-                events.push("unload-image");
             },
         },
         seedGenerator: () => 42,
@@ -425,25 +392,12 @@ test("image pipeline restores the text model after image generation fails", asyn
         }),
         /generation failed/,
     );
-    assert.deepEqual(events, [
-        "unload-text",
-        "generate-failed",
-        "unload-image",
-        "load-text",
-    ]);
+    assert.deepEqual(events, ["generate-failed"]);
 });
 
-test("image regeneration reuses the stored prompt and performs the full model handoff", async () => {
+test("image regeneration reuses the stored prompt without model handoffs", async () => {
     const events = [];
     const pipeline = new ImagePipeline({
-        aiClient: {
-            async unloadModelAndWait() {
-                events.push("unload-text");
-            },
-            async loadModelAndWait() {
-                events.push("load-text");
-            },
-        },
         sceneDirector: {
             async createFromAppearanceAndLatestMessages() {
                 throw new Error("scene director must not run during regeneration");
@@ -453,9 +407,6 @@ test("image regeneration reuses the stored prompt and performs the full model ha
             async generate(prompt, seed) {
                 events.push(`generate:${prompt}:${seed}`);
                 return { buffer: Buffer.from("regenerated-image") };
-            },
-            async releaseModelsForTextInference() {
-                events.push("unload-image");
             },
         },
         seedGenerator: () => 84,
@@ -472,12 +423,9 @@ test("image regeneration reuses the stored prompt and performs the full model ha
     });
 
     assert.deepEqual(events, [
-        "unload-text",
         "status",
         "generate:the complete stored direction:84",
         "deliver",
-        "unload-image",
-        "load-text",
     ]);
     assert.equal(result.scenePrompt, "the complete stored direction");
 });
@@ -521,12 +469,10 @@ test("regenerate callback retrieves the private prompt and sends a separate phot
                     await onImageReady({ buffer: Buffer.from("new-photo") });
                     return {
                         timings: {
-                            textModelUnloadMs: 1,
                             imageStatusMs: 1,
                             imageGenerationMs: 1,
                             imageDeliveryMs: 1,
-                            imageModelUnloadMs: 1,
-                            textModelReloadMs: 1,
+                            totalMs: 3,
                         },
                     };
                 },

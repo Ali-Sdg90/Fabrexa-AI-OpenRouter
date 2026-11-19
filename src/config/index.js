@@ -90,31 +90,48 @@ if (BOT_PRIVATE && !/^[A-Za-z0-9_]{5,32}$/.test(OWNER_USERNAME)) {
     );
 }
 
-// Ollama configuration
-export const OLLAMA_BASE_URL = trimTrailingSlash(
-    process.env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
+// Groq configuration
+export const GROQ_API_KEY = process.env.GROQ_API_KEY?.trim();
+if (!GROQ_API_KEY) {
+    throw new Error(
+        "GROQ_API_KEY is not set. Add it to your .env file.",
+    );
+}
+export const GROQ_BASE_URL = trimTrailingSlash(
+    process.env.GROQ_BASE_URL?.trim() ||
+        "https://api.groq.com/openai/v1",
 );
-export const OLLAMA_CHAT_URL = `${OLLAMA_BASE_URL}/api/chat`;
-export const OLLAMA_MODEL =
-    process.env.OLLAMA_MODEL?.trim() ||
+export const GROQ_CHAT_URL = `${GROQ_BASE_URL}/chat/completions`;
+export const GROQ_MODEL =
+    process.env.GROQ_MODEL?.trim() ||
     process.env.AI_MODEL?.trim() ||
     process.env.MODEL?.trim() ||
-    "llama3.1";
+    "qwen/qwen3.8-27b";
 // Chat, session-memory analysis, and scene direction share one text model.
-export const OLLAMA_ANALYZER_MODEL = OLLAMA_MODEL;
-export const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE?.trim() || "5m";
-export const OLLAMA_NUM_CTX = readNumber("OLLAMA_NUM_CTX", 8192);
-export const OLLAMA_TEMPERATURE = readNumber("OLLAMA_TEMPERATURE", 0.8);
-export const OLLAMA_TOP_P = readNumber("OLLAMA_TOP_P", 0.9);
-export const OLLAMA_MAX_TOKENS = readNumber("OLLAMA_MAX_TOKENS", 2048);
-export const OLLAMA_MIN_RESPONSE_WORDS = readNonNegativeInteger(
-    "OLLAMA_MIN_RESPONSE_WORDS",
+export const GROQ_ANALYZER_MODEL = GROQ_MODEL;
+export const GROQ_CONTEXT_WINDOW = readNumber(
+    "GROQ_CONTEXT_WINDOW",
+    131072,
+);
+export const GROQ_TEMPERATURE = readNumber(
+    "GROQ_TEMPERATURE",
+    0.7,
+);
+export const GROQ_TOP_P = readNumber("GROQ_TOP_P", 0.8);
+export const GROQ_MAX_TOKENS = readNumber(
+    "GROQ_MAX_TOKENS",
+    2048,
+);
+export const GROQ_MIN_RESPONSE_WORDS = readNonNegativeInteger(
+    "GROQ_MIN_RESPONSE_WORDS",
     250,
 );
-export const OLLAMA_MAX_CONTINUATIONS = readNonNegativeInteger(
-    "OLLAMA_MAX_CONTINUATIONS",
+export const GROQ_MAX_CONTINUATIONS = readNonNegativeInteger(
+    "GROQ_MAX_CONTINUATIONS",
     2,
 );
+export const GROQ_REASONING_EFFORT =
+    process.env.GROQ_REASONING_EFFORT?.trim() || "none";
 export const CHAT_HISTORY_MAX_MESSAGES = Math.floor(
     readNumber("CHAT_HISTORY_MAX_MESSAGES", 24),
 );
@@ -149,7 +166,7 @@ export const PERSONALITY_APPEARANCE_DIR = path.join(
 );
 export const DEFAULT_PERSONALITY = "Friendly";
 
-// Request configuration. Local models can be slower than hosted APIs.
+// Request configuration.
 export const REQUEST_TIMEOUT = readNumber("REQUEST_TIMEOUT", 120000);
 export const MAX_MESSAGE_LENGTH = 4096; // Telegram message limit
 export const TELEGRAM_STREAM_EDIT_INTERVAL_MS = readNumber(
@@ -186,14 +203,6 @@ export const IMAGE_USER_PROMPT_HISTORY_LIMIT = Math.floor(
     readNumber("IMAGE_USER_PROMPT_HISTORY_LIMIT", 50),
 );
 
-export const OLLAMA_HANDOFF_TIMEOUT_MS = readNumber(
-    "OLLAMA_HANDOFF_TIMEOUT_MS",
-    30000,
-);
-export const OLLAMA_HANDOFF_POLL_INTERVAL_MS = readNumber(
-    "OLLAMA_HANDOFF_POLL_INTERVAL_MS",
-    500,
-);
 export const IMAGE_DIRECTOR_TEMPERATURE = readNumber(
     "IMAGE_DIRECTOR_TEMPERATURE",
     0.35,
@@ -225,25 +234,6 @@ export const COMFYUI_REQUEST_TIMEOUT_MS = readNumber(
 export const COMFYUI_IDLE_TIMEOUT_MS = readNumber(
     "COMFYUI_IDLE_TIMEOUT_MS",
     300000,
-);
-export const COMFYUI_CLEANUP_TIMEOUT_MS = readNumber(
-    "COMFYUI_CLEANUP_TIMEOUT_MS",
-    30000,
-);
-export const COMFYUI_CLEANUP_POLL_INTERVAL_MS = readNumber(
-    "COMFYUI_CLEANUP_POLL_INTERVAL_MS",
-    1000,
-);
-export const COMFYUI_CLEANUP_MIN_RELEASE_BYTES =
-    readNonNegativeInteger("COMFYUI_CLEANUP_MIN_RELEASE_MB", 64) *
-    1024 *
-    1024;
-export const COMFYUI_CLEANUP_FREE_RATIO = Math.min(
-    1,
-    readNumber("COMFYUI_CLEANUP_FREE_RATIO", 0.7),
-);
-export const COMFYUI_CLEANUP_STABLE_SAMPLES = Math.floor(
-    readNumber("COMFYUI_CLEANUP_STABLE_SAMPLES", 2),
 );
 export const COMFYUI_POSITIVE_PROMPT_NODE_ID =
     process.env.COMFYUI_POSITIVE_PROMPT_NODE_ID?.trim() || "67";

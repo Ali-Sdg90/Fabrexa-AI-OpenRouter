@@ -7,7 +7,7 @@ import { Telegraf } from "telegraf";
 import {
     IS_DEV_LOG_MODE,
     LOG_MODE,
-    OLLAMA_MODEL,
+    GROQ_MODEL,
     TELEGRAM_BOT_TOKEN,
 } from "../config/index.js";
 import { ensureChatDataDirectory } from "../memory/index.js";
@@ -60,7 +60,7 @@ export async function startBot() {
         const tokenLength = TELEGRAM_BOT_TOKEN?.length || 0;
 
         console.log("✅ Fabrexa AI Bot is running!");
-        console.log(`🤖 Local Ollama model: ${OLLAMA_MODEL}`);
+        console.log(`🤖 Groq model: ${GROQ_MODEL}`);
         console.log(
             `🧾 Log mode: ${LOG_MODE}${IS_DEV_LOG_MODE ? " (dev payload logs enabled)" : ""}`,
         );
