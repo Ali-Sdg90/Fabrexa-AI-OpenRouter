@@ -1,0 +1,65 @@
+{
+  "65": {
+    "inputs": {
+      "samples": ["94", 0],
+      "vae": ["73", 2]
+    },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "VAE Decode" }
+  },
+  "67": {
+    "inputs": {
+      "text": "input",
+      "clip": ["73", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "CLIP Text Encode (Prompt)" }
+  },
+  "71": {
+    "inputs": {
+      "text": "score_4, score_5, score_6, low quality, worst quality, blurry, out of focus, pixelated, jpeg artifacts, excessive noise, washed out, overexposed, underexposed, oversaturated, flat lighting, bad composition, duplicate, cloned, extra limbs, missing limbs, malformed limbs, bad anatomy, bad proportions, deformed body, disfigured, mutated, bad hands, extra fingers, missing fingers, fused fingers, malformed feet, extra toes, missing toes, cross-eyed, asymmetrical eyes, malformed eyes, distorted face, plastic skin, waxy skin, bad teeth, duplicated body parts, unnatural pose, stiff pose, floating objects, distorted objects, warped clothing, unrealistic fabric, distorted reflections, text, letters, words, typography, writing, captions, subtitles, logos, brand names, labels, watermarks, signatures, usernames, gibberish text, random letters",
+      "clip": ["73", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "CLIP Text Encode (Negative Prompt)" }
+  },
+  "73": {
+    "inputs": { "ckpt_name": "" },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": { "title": "Load Checkpoint" }
+  },
+  "75": {
+    "inputs": { "width": 896, "height": 1152, "batch_size": 1 },
+    "class_type": "EmptyLatentImage",
+    "_meta": { "title": "Empty Latent Image" }
+  },
+  "84": {
+    "inputs": {
+      "filename_prefix": "cyberpony",
+      "images": ["90", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save Image" }
+  },
+  "90": {
+    "inputs": { "images": ["65", 0] },
+    "class_type": "PreviewImage",
+    "_meta": { "title": "Preview Image" }
+  },
+  "94": {
+    "inputs": {
+      "seed": 558901856835506,
+      "steps": 8,
+      "cfg": 1.1,
+      "sampler_name": "lcm",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": ["73", 0],
+      "positive": ["67", 0],
+      "negative": ["71", 0],
+      "latent_image": ["75", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler" }
+  }
+}

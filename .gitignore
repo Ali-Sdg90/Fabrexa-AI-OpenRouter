@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+backup/
+
+# Runtime data
+chat_memory/
+old_chat_memory/
+*.log
+
+# Private personality prompts and appearance references
+personalities/*
+!personalities/prompts/
+!personalities/appearances/
+personalities/prompts/*
+personalities/appearances/*
+!personalities/prompts/Friendly.txt
+!personalities/prompts/Elara Voss.txt
+!personalities/prompts/Sherlock Holmes.txt
+!personalities/prompts/Vent Girl.txt
+!personalities/appearances/Friendly.txt
+!personalities/appearances/Elara Voss.txt
+!personalities/appearances/Sherlock Holmes.txt
+!personalities/appearances/Vent Girl.txt
+additional-scene-prompt.txt
+
+# Local editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

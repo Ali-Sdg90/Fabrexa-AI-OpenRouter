@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ali-sdg.is-a.dev/Fabrexa-AI/sitemap.xml

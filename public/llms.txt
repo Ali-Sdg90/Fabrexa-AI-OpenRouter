@@ -1,0 +1,23 @@
+# Fabrexa AI
+
+> Fabrexa AI is a self-hosted Telegram bot for personality-driven replies through Ollama, continuity-aware images through ComfyUI, and ordered memory inside each chat session.
+
+The project uses Telegram as the chat interface, Ollama for streamed replies and scene direction, and a configurable ComfyUI checkpoint for generated images. It includes four demo personalities, separate visual appearance references, per-account image controls, image regeneration, and ordered continuity memory inside every chat session. The host can use compact or larger compatible local models according to its hardware. Telegram transports messages and delivered media, while model execution and Fabrexa runtime files remain on the configured host machine.
+
+## Project overview
+
+- [Homepage](https://ali-sdg.is-a.dev/Fabrexa-AI/index.md): Concise product overview, features, requirements, and installation path.
+- [README](https://raw.githubusercontent.com/Ali-Sdg90/Fabrexa-AI/main/README.md): Main setup and usage documentation.
+- [Project guide](https://raw.githubusercontent.com/Ali-Sdg90/Fabrexa-AI/main/docs/PROJECT_GUIDE.md): Architecture, local text and image runtimes, configuration, personalities, session memory, and validation details.
+- [Troubleshooting](https://raw.githubusercontent.com/Ali-Sdg90/Fabrexa-AI/main/docs/TROUBLESHOOTING.md): Common installation and runtime problems.
+
+## Source
+
+- [GitHub repository](https://github.com/Ali-Sdg90/Fabrexa-AI): Source code and project history.
+- [Environment reference](https://raw.githubusercontent.com/Ali-Sdg90/Fabrexa-AI/main/.env.example): Supported configuration variables and defaults.
+
+## Optional
+
+- [Hugging Face Ollama guide](https://huggingface.co/docs/hub/ollama): Running compatible GGUF models from Hugging Face with Ollama.
+- [Ollama](https://ollama.com/): Local model runtime used by Fabrexa AI.
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI): Optional local image-generation runtime used by Fabrexa AI.
